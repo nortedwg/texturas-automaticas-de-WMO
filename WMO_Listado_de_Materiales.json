@@ -1,11 +1,7 @@
 {
     "CUSTOM": {
-        "CUSTOM_PiedraHD_Shadowfang": "creature/singleturret/6ih_ironhorde_supertank_moveg.blp",
-        "CUSTOM_BordeVentana": "world/expansion06/doodads/fx/grad2ceven.blp",
-        "CUSTOM_human_stoneblock": "world/expansion06/doodads/fx/caustic_alpha.blp",
-        "CUSTOM_lt_strmwnd_wall_07": "world/expansion06/doodads/fx/caustic_medfreq.blp",
-        "CUSTOM_6hu_garrison_curb": "world/expansion07/doodads/fx/8fx_visions_oldgod_marker0_3051523.blp",
-        "CUSTOM_6hu_garrison_curbcap": "world/expansion07/doodads/fx/8fx_visions_oldgod_marker01_3051528.blp"
+        "ejemplo": "ejemplo/ejemplo.blp"
+  
     },
     "GENERAL": [
         "dungeons/textures/6du_hellfireraid/6du_hfcitadelfloor1.blp",
@@ -324,6 +320,9 @@
         "dungeons/textures/walls/bm_shdwfang_outerwall_04.blp",
         "dungeons/textures/windows/bm_shdwfang_lordwin_01.blp",
         "dungeons/textures/windows/bm_shdwfang_round_01.blp",
-        "tileset/expansion07/warfronts/8war_rock01_512.blp"
+        "tileset/expansion07/warfronts/8war_rock01_512.blp",
+        "dungeons/textures/7sr_suramar_city/7ne_sr_tilefloorcircle.blp",
+        "dungeons/textures/pandaren/mogu/jlo_mogu_wall_plainstonel.blp",
+        "tileset/expansion07/kultiraszone/8kul_snow03_512.blp"
     ]
 }
