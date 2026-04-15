@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Atajos Útiles",
     "author": "Norte",
-    "version": (3, 1),
+    "version": (3, 2),
     "blender": (3, 4, 0),
     "location": "Menu Vertical",
     "description": "Herramientas de materiales, UVs, atajos de transformación y texturas WMO",
@@ -866,6 +866,140 @@ class NORTE_OT_rotate_90_z(bpy.types.Operator):
 
 
 # =====================================================
+# OPERADOR – Dividir objeto en Sub-grupos WMO
+# =====================================================
+
+class OBJECT_OT_dividir_wmo(bpy.types.Operator):
+    bl_idname = "object.dividir_wmo"
+    bl_label = "Dividir objeto en Sub-grupos WMO"
+    bl_description = (
+        "Divide el objeto seleccionado en partes donde ninguna supere "
+        "38.000 vértices, aristas, caras o triángulos (límite WMO)"
+    )
+    bl_options = {'REGISTER', 'UNDO'}
+
+    LIMIT = 38000
+
+    def execute(self, context):
+        import bmesh
+
+        obj = context.active_object
+        if obj is None or obj.type != 'MESH':
+            self.report({'ERROR'}, "Selecciona un objeto Mesh activo")
+            return {'CANCELLED'}
+
+        if context.mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+
+        # Comprobar si realmente hace falta dividir
+        bm_check = bmesh.new()
+        bm_check.from_mesh(obj.data)
+        max_stat = max(
+            len(bm_check.verts),
+            len(bm_check.edges),
+            len(bm_check.faces),
+            sum(len(f.verts) - 2 for f in bm_check.faces),
+        )
+        bm_check.free()
+
+        if max_stat <= self.LIMIT:
+            self.report({'INFO'}, f"El objeto ya cabe en un sub-grupo WMO (máx actual: {max_stat:,})")
+            return {'FINISHED'}
+
+        original_name = obj.name
+        part_index = 1
+        parts_created = 0
+
+        bpy.ops.object.select_all(action='DESELECT')
+        obj.select_set(True)
+        context.view_layer.objects.active = obj
+
+        while True:
+            # ── Recalcular stats del objeto restante ──────────
+            bm = bmesh.new()
+            bm.from_mesh(obj.data)
+            bm.faces.ensure_lookup_table()
+            bm.verts.ensure_lookup_table()
+            bm.edges.ensure_lookup_table()
+
+            total_verts = len(bm.verts)
+            total_edges = len(bm.edges)
+            total_faces = len(bm.faces)
+            total_tris  = sum(len(f.verts) - 2 for f in bm.faces)
+            cur_max     = max(total_verts, total_edges, total_faces, total_tris)
+
+            if cur_max <= self.LIMIT:
+                bm.free()
+                break  # El trozo restante ya cabe → terminar
+
+            # ── Calcular primer grupo de caras (greedy) ───────
+            first_group = []
+            cv = set()   # vértices acumulados
+            ce = set()   # aristas acumuladas
+            ct = 0       # triángulos acumulados
+
+            for face in bm.faces:
+                ft = len(face.verts) - 2
+                fv = {v.index for v in face.verts}
+                fe = {e.index for e in face.edges}
+                nv = fv - cv
+                ne = fe - ce
+
+                if first_group and (
+                    len(cv) + len(nv) > self.LIMIT or
+                    len(ce) + len(ne) > self.LIMIT or
+                    len(first_group) + 1  > self.LIMIT or
+                    ct + ft               > self.LIMIT
+                ):
+                    break  # Grupo lleno → separar aquí
+
+                first_group.append(face.index)
+                cv |= fv
+                ce |= fe
+                ct += ft
+
+            bm.free()
+
+            if not first_group:
+                self.report({'ERROR'}, "No se puede dividir más el objeto (cara individual supera el límite)")
+                break
+
+            # ── Seleccionar caras del primer grupo y separar ──
+            bpy.ops.object.mode_set(mode='OBJECT')
+            first_group_set = set(first_group)
+            for poly in obj.data.polygons:
+                poly.select = (poly.index in first_group_set)
+
+            bpy.ops.object.mode_set(mode='EDIT')
+            bpy.ops.mesh.separate(type='SELECTED')
+            bpy.ops.object.mode_set(mode='OBJECT')
+
+            # Identificar el nuevo objeto creado por separate
+            new_obj = None
+            for o in context.selected_objects:
+                if o is not obj:
+                    new_obj = o
+                    break
+
+            if new_obj:
+                new_obj.name = f"{original_name}_WMO_{part_index}"
+                part_index += 1
+                parts_created += 1
+
+            # Continuar solo con el objeto original (caras restantes)
+            bpy.ops.object.select_all(action='DESELECT')
+            obj.select_set(True)
+            context.view_layer.objects.active = obj
+
+        # Renombrar el trozo final (el objeto original con lo que queda)
+        obj.name = f"{original_name}_WMO_{part_index}"
+        parts_created += 1
+
+        self.report({'INFO'}, f"'{original_name}' dividido en {parts_created} sub-grupos WMO")
+        return {'FINISHED'}
+
+
+# =====================================================
 # PANEL PRINCIPAL – colapsa todo al cerrarse
 # =====================================================
 
@@ -933,10 +1067,10 @@ class MATERIAL_PT_sec_nombres(bpy.types.Panel):
         col.operator("material.eliminar_duplicados_001", icon='TRASH')
 
 
-# ── Subpanel: Texturas WMO ───────────────────────────
+# ── Subpanel: WMO ────────────────────────────────────
 
 class MATERIAL_PT_sec_texturas(bpy.types.Panel):
-    bl_label = "Texturas WMO"
+    bl_label = "WMO"
     bl_idname = "MATERIAL_PT_sec_texturas"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -963,6 +1097,11 @@ class MATERIAL_PT_sec_texturas(bpy.types.Panel):
         box.prop(props, "new_wow_path", text="Ruta (.blp)")
         box.operator("material.wbs_add_to_db", icon='FILE_TICK', text="Añadir a la Base de Datos")
 
+        layout.separator()
+        row = layout.row()
+        row.scale_y = 1.4
+        row.operator("object.dividir_wmo", icon='MOD_EXPLODE', text="Dividir objeto en Sub-grupos WMO")
+
 
 # ── Subpanel: Diagnóstico ────────────────────────────
 
@@ -974,6 +1113,7 @@ class MATERIAL_PT_sec_diagnostico(bpy.types.Panel):
     bl_category = "WoW: Atajos"
     bl_parent_id = "MATERIAL_PT_tools_norte"
     bl_order = 5
+    bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
         col = self.layout.column(align=True)
@@ -993,6 +1133,7 @@ class MATERIAL_PT_sec_exportar(bpy.types.Panel):
     bl_category = "WoW: Atajos"
     bl_parent_id = "MATERIAL_PT_tools_norte"
     bl_order = 6
+    bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
         col = self.layout.column(align=True)
@@ -1011,6 +1152,7 @@ class MATERIAL_PT_sec_importar(bpy.types.Panel):
     bl_category = "WoW: Atajos"
     bl_parent_id = "MATERIAL_PT_tools_norte"
     bl_order = 7
+    bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
         col = self.layout.column(align=True)
@@ -1039,6 +1181,7 @@ classes = (
     MATERIAL_OT_export_names,
     MATERIAL_OT_export_pngs,
     NORTE_OT_rotate_90_z,
+    OBJECT_OT_dividir_wmo,
     WM_OT_cerrar_consola,
     WM_OT_abrir_carpeta_addon,
     WM_OT_importar_json_custom,
